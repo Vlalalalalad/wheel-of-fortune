@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Колесо Фортуни</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(var(--rotation)); }
+        }
+        
+        .wheel-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 1/1;
+        }
+        
+        #wheel {
+            width: 100%;
+            height: 100%;
+            transition: transform 8s cubic-bezier(0.17, 0.67, 0.21, 0.99);
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        #arrow {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 30px solid #FFD700;
+            filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.7));
+            z-index: 10;
+        }
+        
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            opacity: 0;
+        }
+        
+        .envelope {
+            transition: all 0.3s ease;
+        }
+        
+        .envelope:hover {
+            transform: scale(1.1);
+        }
+        
+        .envelope:active {
+            transform: scale(0.95);
+        }
+        
+        .modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        .modal.hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+        }
+        
+        text {
+            fill: white;
+            font-weight: bold;
+            pointer-events: none;
+            user-select: none;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-indigo-900 to-purple-900 min-h-screen flex flex-col items-center justify-center p-4 font-sans text-white">
+    <div class="max-w-4xl w-full text-center">
+        <h1 class="text-4xl md:text-5xl font-bold mb-2 text-yellow-300 drop-shadow-lg">Колесо Фортуни</h1>
+        <p class="text-lg mb-8 text-blue-200">Обертайте колесо та вигравайте призи!</p>
+        
+        <div class="wheel-container mx-auto mb-8">
+            <!-- Arrow pointer -->
+            <div id="arrow" title="Стрілка"></div>
+            
+            <!-- SVG Wheel -->
+            <svg id="wheel" viewBox="0 0 500 500" aria-label="Колесо Фортуни" role="img"></svg>
+            
+            <!-- Winning envelope (hidden initially) -->
+            <div id="envelope-container" class="absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-500 z-20">
+                <div class="envelope bg-yellow-400 p-6 rounded-lg shadow-2xl flex flex-col items-center cursor-pointer transform hover:scale-105 transition-transform" id="envelope">
+                    <i class="fas fa-envelope-open-text text-6xl text-red-600 mb-4"></i>
+                    <p class="text-xl font-bold text-gray-900">Вітаємо! Ви виграли Конверт!</p>
+                    <p class="text-gray-700 mt-2">Клацніть, щоб відкрити</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Spin button -->
+        <button id="spin-btn" class="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 font-bold py-3 px-8 rounded-full text-xl shadow-lg transform hover:scale-105 active:scale-95 transition-transform">
+            Крутити!
+        </button>
+        
+        <!-- Instructions -->
+        <div class="mt-8 bg-indigo-900 bg-opacity-50 p-4 rounded-lg max-w-md mx-auto backdrop-blur-sm">
+            <h2 class="text-xl font-bold mb-2 text-yellow-300">Як грати?</h2>
+            <p class="text-blue-100">Натисніть кнопку "Крутити!", щоб обертати колесо. Після зупинки колеса ви побачите свій приз!</p>
+        </div>
+    </div>
+    
+    <!-- Telegram-like notification -->
+    <div id="telegram-notification" class="fixed bottom-4 right-4 bg-white text-gray-800 px-4 py-3 rounded-lg shadow-lg transform translate-y-4 opacity-0 transition-all duration-300 z-50 hidden">
+        <div class="flex items-center">
+            <div class="mr-2">
+                <i class="fas fa-user-circle text-xl text-blue-500"></i>
+            </div>
+            <div>
+                <p class="font-bold">Владислав</p>
+                <p>Чудово! До зустрічі!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for invitation -->
+    <div id="invitation-modal" class="modal fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4 hidden">
+        <div class="bg-gradient-to-br from-yellow-100 to-yellow-300 rounded-xl p-6 max-w-md w-full shadow-2xl relative">
+            <button id="close-modal" class="absolute top-2 right-2 text-gray-700 hover:text-gray-900">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="text-center">
+                <i class="fas fa-envelope-open-text text-5xl text-red-600 mb-4"></i>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Запрошення на День Народження!</h2>
+                <div class="text-gray-800 mb-4 text-left">
+                    <p class="mb-4">Дорогий друже!</p>
+                    <p class="mb-4">Запрошую тебе на святкування мого Дня Народження!</p>
+                    
+                    <div class="bg-white bg-opacity-50 rounded-lg p-4 mb-4">
+                        <p class="font-bold"><i class="fas fa-calendar-day text-red-500 mr-2"></i>Дата: 27.07</p>
+                        <p class="font-bold"><i class="fas fa-clock text-red-500 mr-2"></i>Час: 18:00</p>
+                        <p class="font-bold"><i class="fas fa-map-marker-alt text-red-500 mr-2"></i>Місце: ТРЦ "Анастасія"</p>
+                    </div>
+                    
+                    <p class="mb-4">Буде багато смачної їжі, гарного настрою та цікавих розваг!</p>
+                    <p>Чекаю тебе!</p>
+                </div>
+                <button id="confirm-btn" class="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold py-2 px-6 rounded-full mt-4 shadow-md">
+                    Я прийду!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wheel configuration
+            const prizes = [
+                "Ящик пива", "Відео привіт від @andre.boyarskiy", "Вантажівка кавуна", "Rolex",
+                "Права категорії D1", "Місячна ділянка 1м²", "1001 роза", "Побачення з Меган Фокс",
+                "Daewoo Matiz 2007", "Сертифікат в масажку", "Джакузі для мошонки", "Автограф пса Патрона",
+                "Власний бізнес 'Шаурмішка'", "$1000 кешем", "1 Bitcoin", "Путівка в Таїланд",
+                "Квартира в центрі Вінниці", "Конверт"  // This is the target segment (index 17)
+            ];
+
+            const colors = [
+                '#CC0000', '#CC4000', '#CC8000', '#CCCC00', '#80CC00',
+                '#40CC00', '#00CC00', '#00CC40', '#00CC80', '#00CCCC',
+                '#0080CC', '#0040CC', '#0000CC', '#4000CC', '#8000CC',
+                '#CC00CC', '#CC0080', '#CC0040'
+            ];
+
+            const wheel = document.getElementById('wheel');
+            const spinBtn = document.getElementById('spin-btn');
+            const envelopeContainer = document.getElementById('envelope-container');
+            const envelope = document.getElementById('envelope');
+            const invitationModal = document.getElementById('invitation-modal');
+            const closeModal = document.getElementById('close-modal');
+            const confirmBtn = document.getElementById('confirm-btn');
+            
+            const center = 250;
+            const radius = 240;
+            const segmentCount = prizes.length;
+            const segmentAngle = 360 / segmentCount;
+            
+            // Create wheel segments
+            function createWheel() {
+                wheel.innerHTML = '';
+                
+                // Add center circle
+                const centerCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                centerCircle.setAttribute('cx', center);
+                centerCircle.setAttribute('cy', center);
+                centerCircle.setAttribute('r', 40);
+                centerCircle.setAttribute('fill', '#FFD700');
+                centerCircle.setAttribute('stroke', '#FFA500');
+                centerCircle.setAttribute('stroke-width', '3');
+                wheel.appendChild(centerCircle);
+                
+                // Add center text
+                const centerText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                centerText.setAttribute('x', center);
+                centerText.setAttribute('y', center);
+                centerText.setAttribute('text-anchor', 'middle');
+                centerText.setAttribute('dominant-baseline', 'middle');
+                centerText.setAttribute('font-size', '24');
+                centerText.setAttribute('font-weight', 'bold');
+                centerText.setAttribute('fill', '#000');
+                centerText.textContent = 'Колесо Фортуни';
+                wheel.appendChild(centerText);
+
+                for (let i = 0; i < segmentCount; i++) {
+                    const startAngle = segmentAngle * i;
+                    const endAngle = startAngle + segmentAngle;
+                    const largeArc = segmentAngle > 180 ? 1 : 0;
+
+                    const startRad = (startAngle - 90) * Math.PI / 180;
+                    const endRad = (endAngle - 90) * Math.PI / 180;
+
+                    const x1 = center + radius * Math.cos(startRad);
+                    const y1 = center + radius * Math.sin(startRad);
+                    const x2 = center + radius * Math.cos(endRad);
+                    const y2 = center + radius * Math.sin(endRad);
+
+                    const pathData = [
+                        `M${center},${center}`,
+                        `L${x1},${y1}`,
+                        `A${radius},${radius} 0 ${largeArc} 1 ${x2},${y2}`,
+                        'Z'
+                    ].join(' ');
+
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('fill', colors[i]);
+                    path.setAttribute('stroke', '#000');
+                    path.setAttribute('stroke-width', '2');
+                    wheel.appendChild(path);
+
+                    const textAngle = startAngle + segmentAngle / 2;
+                    const textRad = (textAngle - 90) * Math.PI / 180;
+                    const fixedTextRadius = radius * 0.55;
+
+                    const textX = center + fixedTextRadius * Math.cos(textRad);
+                    const textY = center + fixedTextRadius * Math.sin(textRad);
+
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute('x', textX);
+                    text.setAttribute('y', textY);
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('dominant-baseline', 'middle');
+
+                    let fontSize = 18;
+                    if(prizes[i].length > 25) fontSize = 12;
+                    else if(prizes[i].length > 18) fontSize = 14;
+                    else if(prizes[i].length > 12) fontSize = 16;
+
+                    text.style.fontSize = fontSize + 'px';
+                    text.setAttribute('transform', `rotate(${textAngle - 90} ${textX} ${textY})`);
+                    text.textContent = prizes[i];
+                    wheel.appendChild(text);
+                }
+            }
+
+            // Spin the wheel
+            function spinWheel() {
+                spinBtn.disabled = true;
+                spinBtn.classList.remove('hover:from-yellow-500', 'hover:to-yellow-600', 'hover:scale-105');
+                spinBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                
+                // Calculate rotation (always lands on "Конверт" which is index 17)
+                const fullRotations = 5; // Number of full rotations before stopping
+                const targetSegmentIndex = 17; // Index of "Конверт"
+                const targetAngle = 360 * fullRotations + (360 - (targetSegmentIndex * segmentAngle + segmentAngle / 2));
+                
+                // Set the target rotation for CSS transition
+                wheel.style.transform = `rotate(${targetAngle}deg)`;
+                
+                // After spinning completes
+                setTimeout(() => {
+                    // Show envelope with confetti
+                    setTimeout(() => {
+                        envelopeContainer.classList.remove('opacity-0', 'pointer-events-none');
+                        
+                        // Launch confetti
+                        confetti({
+                            particleCount: 150,
+                            spread: 70,
+                            origin: { y: 0.6 }
+                        });
+                    }, 500);
+                }, 8000);
+            }
+
+            // Show invitation modal
+            function showInvitation() {
+                invitationModal.classList.remove('hidden');
+            }
+
+            // Hide invitation modal
+            function hideInvitation() {
+                invitationModal.classList.add('hidden');
+            }
+
+            // Event listeners
+            envelope.addEventListener('click', showInvitation);
+            closeModal.addEventListener('click', hideInvitation);
+            confirmBtn.addEventListener('click', () => {
+                hideInvitation();
+                
+                // Show Telegram-like notification
+                const notification = document.getElementById('telegram-notification');
+                notification.classList.remove('hidden', 'translate-y-4', 'opacity-0');
+                notification.classList.add('translate-y-0', 'opacity-100');
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    notification.classList.remove('translate-y-0', 'opacity-100');
+                    notification.classList.add('translate-y-4', 'opacity-0');
+                    setTimeout(() => notification.classList.add('hidden'), 300);
+                }, 3000);
+            });
+
+            // Initialize the wheel
+            createWheel();
+            
+            // Position arrow between "Daewoo Matiz 2007" (index 8) and "Сертифікат в масажку" (index 9)
+            const initialRotation = 360 - (8.5 * segmentAngle);
+            wheel.style.transform = `rotate(${initialRotation}deg)`;
+            
+            // Add slow continuous rotation
+            let slowRotation = 0;
+            const slowSpinInterval = setInterval(() => {
+                slowRotation += 0.2;
+                wheel.style.transform = `rotate(${initialRotation + slowRotation}deg)`;
+            }, 50);
+            
+            // Stop slow rotation when spin button is pressed
+            spinBtn.addEventListener('click', () => {
+                clearInterval(slowSpinInterval);
+                spinWheel();
+            });
+        });
+    </script>
+</body>
+</html>
